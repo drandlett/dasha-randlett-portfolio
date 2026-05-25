@@ -1,0 +1,987 @@
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Mural Admin")
+    .addItem("Send Daily Briefs Now", "sendDailyBriefs")
+    .addItem("Send Test Email to Everyone", "sendTestEmail")
+    .addItem("Set Daily 7:00 AM ET Trigger", "setupDailyBriefTrigger")
+    .addToUi();
+}
+
+function setupDailyBriefTrigger() {
+
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+
+    if (
+      trigger.getHandlerFunction() === "sendDailyBriefs"
+    ) {
+
+      ScriptApp.deleteTrigger(trigger);
+
+    }
+
+  });
+
+  ScriptApp.newTrigger("sendDailyBriefs")
+    .timeBased()
+    .everyDays(1)
+    .atHour(7)
+    .nearMinute(0)
+    .inTimezone("America/New_York")
+    .create();
+}
+
+function sendTestEmail() {
+
+  MailApp.sendEmail({
+    to:
+      "dasha.randlett@gmail.com
+
+    subject:
+      "COMPANY Test Email",
+
+    body:
+      "This is a test email from the COMPANY Google Sheets script."
+  });
+
+}
+
+function sendDailyBriefs() {
+
+  const ss =
+    SpreadsheetApp.getActiveSpreadsheet();
+
+  const sheet =
+    ss.getSheetByName("DR Table View");
+
+  if (!sheet) {
+
+    MailApp.sendEmail({
+      to:"dasha.randlett@gmail.com",
+
+      subject:
+        "COMPANY Daily Brief Error",
+
+      body:
+        "ERROR: Sheet not found: DR Table View"
+    });
+
+    return;
+  }
+
+  const rows =
+    sheet.getDataRange().getValues();
+
+  if (rows.length < 2) {
+
+    MailApp.sendEmail({
+      to:"dasha.randlett@gmail.com",
+
+      subject:
+        "COMPANY Daily Brief Error",
+
+      body:
+        "ERROR: No project data found."
+    });
+
+    return;
+  }
+
+  const headers = rows[0];
+  const data = rows.slice(1);
+
+  const timezone =
+    "America/New_York";
+
+  const col =
+    getColumnMap(headers);
+
+  const staff = {
+
+
+  };
+
+  const briefs = {
+
+
+      tasks:[]
+    }
+
+  };
+
+  data.forEach((row) => {
+
+    const owner =
+      String(
+        getValue(row, col, "Owner") || ""
+      )
+      .trim()
+      .toUpperCase();
+
+    if (
+      !owner ||
+      !staff[owner]
+    ) {
+      return;
+    }
+
+    const personName =
+      staff[owner].name;
+
+    briefs[personName].tasks.push(
+      buildTask(
+        row,
+        col,
+        timezone
+      )
+    );
+
+  });
+
+  Object.keys(briefs).forEach(personName => {
+
+    briefs[personName].tasks.sort(
+      sortTasksByUrgencyThenDueDate
+    );
+
+  });
+
+  const subject =
+    `COMPANY Daily Production Brief | ${
+      Utilities.formatDate(
+        new Date(),
+        timezone,
+        "EEEE, MMM d"
+      )
+    }`;
+
+  const htmlBody =
+    buildEmailBody(briefs);
+
+  MailApp.sendEmail({
+
+    to:
+      "dasha.randlett@gmail.com",
+
+    subject: subject,
+
+    htmlBody: htmlBody
+
+  });
+
+}
+
+function getColumnMap(headers) {
+
+  const map = {};
+
+  headers.forEach((header, index) => {
+
+    if (header) {
+
+      map[
+        header.toString().trim()
+      ] = index;
+
+    }
+
+  });
+
+  return map;
+}
+
+function getValue(
+  row,
+  col,
+  columnName
+) {
+
+  const index =
+    col[columnName];
+
+  return index !== undefined
+    ? row[index]
+    : "";
+}
+
+function buildTask(
+  row,
+  col,
+  timezone
+) {
+
+  const dueDateRaw =
+    getValue(
+      row,
+      col,
+      "Due Date"
+    );
+
+  const urgency =
+    getValue(
+      row,
+      col,
+      "Urgency"
+    );
+
+  return {
+
+    projectNumber:
+      getValue(
+        row,
+        col,
+        "Project Number"
+      ),
+
+    client:
+      getValue(
+        row,
+        col,
+        "Client"
+      ),
+
+    dueDateRaw:
+      dueDateRaw,
+
+    dueDate:
+      formatDate(
+        dueDateRaw,
+        timezone
+      ),
+
+    daysOverdue:
+      calculateDaysOverdue(
+        dueDateRaw
+      ),
+
+    paintStartDate:
+      formatDate(
+        getValue(
+          row,
+          col,
+          "Paint Start Date"
+        ),
+        timezone
+      ),
+
+    paintCompleteDate:
+      formatDate(
+        getValue(
+          row,
+          col,
+          "Paint Complete Date"
+        ),
+        timezone
+      ),
+
+    urgency:
+      urgency,
+
+    urgencyGroup:
+      getUrgencyGroup(
+        urgency
+      ),
+
+    stage:
+      getValue(
+        row,
+        col,
+        "Stage"
+      ),
+
+    status:
+      getValue(
+        row,
+        col,
+        "Status"
+      ),
+
+    waitingOn:
+      getValue(
+        row,
+        col,
+        "Waiting On"
+      ),
+
+    actionNeeded:
+      getValue(
+        row,
+        col,
+        "Action Needed"
+      ),
+
+    description:
+      getValue(
+        row,
+        col,
+        "Description"
+      ),
+
+    projectScope:
+      getValue(
+        row,
+        col,
+        "Project Scope"
+      )
+  };
+}
+
+function getUrgencyGroup(
+  urgency
+) {
+
+  const value =
+    String(urgency || "")
+      .toLowerCase();
+
+  if (
+    value.includes("overdue")
+  ) {
+    return "Overdue";
+  }
+
+  if (
+    value.includes("immediate")
+  ) {
+    return "Immediate";
+  }
+
+  return "Production";
+}
+
+function sortTasksByUrgencyThenDueDate(
+  a,
+  b
+) {
+
+  const urgencyOrder = {
+
+    Overdue:1,
+    Immediate:2,
+    Production:3
+
+  };
+
+  const urgencyA =
+    urgencyOrder[
+      a.urgencyGroup
+    ] || 999;
+
+  const urgencyB =
+    urgencyOrder[
+      b.urgencyGroup
+    ] || 999;
+
+  if (
+    urgencyA !== urgencyB
+  ) {
+
+    return urgencyA - urgencyB;
+
+  }
+
+  const dueDateA =
+    getSortDate(
+      a.dueDateRaw
+    );
+
+  const dueDateB =
+    getSortDate(
+      b.dueDateRaw
+    );
+
+  if (
+    dueDateA !== dueDateB
+  ) {
+
+    return dueDateA - dueDateB;
+
+  }
+
+  return String(
+    a.client || ""
+  ).localeCompare(
+    String(
+      b.client || ""
+    )
+  );
+}
+
+function getSortDate(
+  dateValue
+) {
+
+  if (
+    dateValue instanceof Date
+  ) {
+
+    const cleanDate =
+      new Date(dateValue);
+
+    cleanDate.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    return cleanDate.getTime();
+  }
+
+  return 9999999999999;
+}
+
+function calculateDaysOverdue(
+  dateValue
+) {
+
+  if (
+    !(dateValue instanceof Date)
+  ) {
+    return "";
+  }
+
+  const today =
+    new Date();
+
+  today.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const due =
+    new Date(dateValue);
+
+  due.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const diff =
+    Math.floor(
+      (today - due) /
+      (1000 * 60 * 60 * 24)
+    );
+
+  return diff > 0
+    ? diff
+    : "";
+}
+
+function formatDate(
+  value,
+  timezone
+) {
+
+  if (
+    !(value instanceof Date)
+  ) {
+
+    return value || "";
+
+  }
+
+  return Utilities.formatDate(
+    value,
+    timezone,
+    "EEE, MMM d"
+  );
+}
+
+function buildEmailBody(
+  briefs
+) {
+
+  if (!briefs) {
+    briefs = {};
+  }
+
+  const sortedBriefs =
+    Object.values(briefs)
+      .filter(brief => brief && brief.person)
+      .sort((a, b) =>
+        a.person.name.localeCompare(
+          b.person.name
+        )
+      );
+
+  const allTasks =
+    sortedBriefs.reduce(
+      (items, brief) =>
+        items.concat(
+          brief.tasks || []
+        ),
+      []
+    );
+
+  const totalActive =
+    allTasks.length;
+
+  const totalOverdue =
+    allTasks.filter(
+      t => t.urgencyGroup === "Overdue"
+    ).length;
+
+  const totalImmediate =
+    allTasks.filter(
+      t => t.urgencyGroup === "Immediate"
+    ).length;
+
+  const totalProduction =
+    allTasks.filter(
+      t => t.urgencyGroup === "Production"
+    ).length;
+
+  const totalWaitingOn =
+    allTasks.filter(
+      t => t.waitingOn
+    ).length;
+
+  let body = `
+    <div style="
+      font-family:Arial,sans-serif;
+      color:#222;
+      line-height:1.45;
+      max-width:950px;
+    ">
+
+      <div style="
+        background:#000000;
+        color:white;
+        padding:18px;
+        border-radius:10px;
+        margin-bottom:16px;
+      ">
+
+        <h2 style="margin:0;">
+          COMPANY DAILY BRIEF
+        </h2>
+
+        <p style="
+          margin:8px 0 0 0;
+          opacity:.92;
+        ">
+          Good morning team. Here’s a quick overview of today’s production schedule, active projects, upcoming paint dates, blockers, and items that may need attention.
+        </p>
+
+      </div>
+
+      <div style="
+        background:#F7F7F7;
+        border-radius:8px;
+        padding:12px 14px;
+        margin-bottom:16px;
+        font-size:14px;
+      ">
+
+        <strong>
+          Today’s Snapshot:
+        </strong>
+
+        ${totalActive} active item(s)
+        •
+        ${totalOverdue} overdue
+        •
+        ${totalImmediate} immediate
+        •
+        ${totalProduction} production / upcoming
+        •
+        ${totalWaitingOn} waiting on next step
+
+      </div>
+
+      <div style="
+        background:#F7F7F7;
+        padding:12px 14px;
+        border-radius:8px;
+        margin-bottom:18px;
+      ">
+
+        <div style="
+          font-weight:bold;
+          margin-bottom:6px;
+          color:#222;
+        ">
+          PRIORITIES
+        </div>
+
+        <ul style="
+          margin:0;
+          padding-left:18px;
+          color:#444;
+        ">
+          <li>Review overdue production items and timeline risks.</li>
+          <li>Confirm next steps for any active design approvals or blocked items.</li>
+          <li>Review upcoming paint dates, production timing, and staffing visibility.</li>
+        </ul>
+
+      </div>
+  `;
+
+  if (sortedBriefs.length === 0) {
+
+    body += `
+      <p style="
+        background:#F7F7F7;
+        padding:12px;
+        border-radius:8px;
+      ">
+        No active assigned production items were found for today's brief.
+      </p>
+    `;
+
+  }
+
+  sortedBriefs.forEach(
+    brief => {
+
+    if (
+      !brief.tasks ||
+      brief.tasks.length === 0
+    ) {
+      return;
+    }
+
+    const overdueCount =
+      brief.tasks.filter(
+        t => t.urgencyGroup === "Overdue"
+      ).length;
+
+    const immediateCount =
+      brief.tasks.filter(
+        t => t.urgencyGroup === "Immediate"
+      ).length;
+
+    const productionCount =
+      brief.tasks.filter(
+        t => t.urgencyGroup === "Production"
+      ).length;
+
+    const waitingOnCount =
+      brief.tasks.filter(
+        t => t.waitingOn
+      ).length;
+
+    body += `
+      <div style="
+        margin-top:24px;
+      ">
+
+        <h3 style="
+          color:#2F5D50;
+          border-bottom:
+          2px solid #2F5D50;
+          padding-bottom:5px;
+          margin-bottom:8px;
+        ">
+          ${brief.person.name}
+        </h3>
+
+        <p style="
+          margin:0 0 10px 0;
+          color:#555;
+        ">
+          Here is a quick overview of today's active projects and production items for
+          ${brief.person.name}.
+        </p>
+
+        <div style="
+          background:#F7F7F7;
+          border-radius:8px;
+          padding:10px 12px;
+          margin-bottom:14px;
+          font-size:14px;
+        ">
+
+          <strong>
+            Quick Summary:
+          </strong>
+
+          ${brief.tasks.length} active item(s)
+          •
+          ${overdueCount} overdue
+          •
+          ${immediateCount} immediate
+          •
+          ${productionCount} production / upcoming
+          •
+          ${waitingOnCount} waiting on next step
+
+        </div>
+
+        <p style="
+          margin-bottom:10px;
+          color:#555;
+        ">
+          Please review the items below for production updates, timeline visibility, blockers, and next steps.
+        </p>
+
+      </div>
+    `;
+
+    brief.tasks.forEach(
+      task => {
+
+      body += formatTask(
+        task,
+        brief.person.name
+      );
+
+    });
+
+  });
+
+  body += `
+      <div style="
+        margin-top:24px;
+        padding-top:14px;
+        border-top:1px solid #DDD;
+        color:#666;
+        font-size:13px;
+      ">
+
+        <p style="margin-bottom:8px;">
+          Thank you, team. Please continue updating the tracker to maintain visibility, scheduling, and project timelines.
+        </p>
+
+        <p style="margin:0;">
+          Best,<br>
+          COMPANY Operations Bot
+        </p>
+
+      </div>
+
+    </div>
+  `;
+
+  return body;
+}
+
+function formatTask(
+  task,
+  ownerName
+) {
+
+  const colors = {
+
+    Overdue: {
+      background:"#FDECEC",
+      border:"#B00020",
+      text:"#B00020"
+    },
+
+    Immediate: {
+      background:"#FFF4CC",
+      border:"#D28A00",
+      text:"#8A5A00"
+    },
+
+    Production: {
+      background:"#EEF7EE",
+      border:"#2F7D32",
+      text:"#2F7D32"
+    }
+
+  };
+
+  const color =
+    colors[
+      task.urgencyGroup
+    ] || colors.Production;
+
+  let text = `
+    <div style="
+      background:${color.background};
+      border-left:
+      6px solid ${color.border};
+      padding:12px;
+      margin:10px 0;
+      border-radius:8px;
+    ">
+
+      <div style="
+        font-size:16px;
+        margin-bottom:6px;
+      ">
+
+        <strong>
+          ${task.projectNumber || "Not listed"}
+          |
+          ${task.client || "Not listed"}
+        </strong>
+
+      </div>
+
+      <div style="
+        margin-bottom:8px;
+      ">
+
+        <span style="
+          background:white;
+          color:${color.text};
+          padding:4px 8px;
+          border-radius:6px;
+          font-weight:bold;
+        ">
+          ${task.urgencyGroup}
+        </span>
+
+        <span style="
+          background:#FFE9A8;
+          color:#5C4300;
+          padding:4px 8px;
+          border-radius:6px;
+          font-weight:bold;
+          margin-left:6px;
+        ">
+          Assigned to:
+          ${ownerName}
+        </span>
+
+      </div>
+  `;
+
+  const details = [];
+
+  if (task.dueDate) {
+
+    details.push(`
+      <strong>Due:</strong>
+      ${task.dueDate}
+    `);
+
+  }
+
+  if (
+    task.urgencyGroup === "Overdue" &&
+    task.daysOverdue
+  ) {
+
+    details.push(`
+      <strong>Overdue By:</strong>
+      ${task.daysOverdue} day(s)
+    `);
+
+  }
+
+  if (
+    task.paintStartDate ||
+    task.paintCompleteDate
+  ) {
+
+    details.push(`
+      <strong>Paint:</strong>
+      ${task.paintStartDate || "TBD"}
+      →
+      ${task.paintCompleteDate || "TBD"}
+    `);
+
+  }
+
+  if (task.stage) {
+
+    details.push(`
+      <strong>Stage:</strong>
+      ${task.stage}
+    `);
+
+  }
+
+  if (task.status) {
+
+    details.push(`
+      <strong>Status:</strong>
+      ${task.status}
+    `);
+
+  }
+
+  if (task.waitingOn) {
+
+    details.push(`
+      <strong>Waiting On:</strong>
+      ${task.waitingOn}
+    `);
+
+  }
+
+  if (
+    details.length > 0
+  ) {
+
+    text += `
+      <div style="
+        margin-bottom:6px;
+      ">
+        ${details.join(
+          " &nbsp; | &nbsp; "
+        )}
+      </div>
+    `;
+
+  }
+
+  if (task.actionNeeded) {
+
+    text += `
+      <div style="
+        background:white;
+        padding:8px;
+        margin-top:8px;
+        border-radius:6px;
+      ">
+
+        <strong>
+          Action Needed:
+        </strong>
+
+        ${task.actionNeeded}
+
+      </div>
+    `;
+
+  }
+
+  if (task.description) {
+
+    text += `
+      <div style="
+        margin-top:6px;
+      ">
+
+        <strong>
+          Description:
+        </strong>
+
+        ${task.description}
+
+      </div>
+    `;
+
+  }
+
+  if (task.projectScope) {
+
+    text += `
+      <div style="
+        margin-top:4px;
+      ">
+
+        <strong>
+          Scope:
+        </strong>
+
+        ${task.projectScope}
+
+      </div>
+    `;
+
+  }
+
+  text += `</div>`;
+
+  return text;
+}
