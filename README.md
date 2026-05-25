@@ -21,7 +21,7 @@ Executive reporting automation built using Google Sheets, Excel, formulas, condi
 ---
 
 ### Project Status Automation
-[View Project Status Script](Project Status.gs.txt)
+[View Project Status Script](Project_Status.gs.txt)
 
 Automated project status tracking workflow with risk scoring, dashboard calculations, reporting logic, and operational visibility enhancements.
 
