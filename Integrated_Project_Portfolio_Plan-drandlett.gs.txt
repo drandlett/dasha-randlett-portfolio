@@ -1,0 +1,87 @@
+function sendIveyExecutiveDashboardReport() {
+  const recipient = "dasha.randlett@gmail.com";
+  const companyName = "COMPANY NAME";
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Executive Dashboard");
+
+  const projectsOnTrack = sheet.getRange("B4").getValue();
+  const projectsAtRisk = sheet.getRange("E4").getValue();
+  const criticalProjects = sheet.getRange("H4").getValue();
+  const upcomingDecisions = sheet.getRange("K4").getValue();
+
+  const dashboardUrl = ss.getUrl();
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MMMM d, yyyy");
+
+  const subject = `${companyName} Daily Executive Dashboard Report - ${today}`;
+
+  const body = `
+  <div style="font-family: Arial, sans-serif; color: #333; max-width: 720px; line-height: 1.5;">
+    
+    <div style="background-color: #24476b; color: white; padding: 18px 22px; border-radius: 8px 8px 0 0;">
+      <h2 style="margin: 0;">${companyName} Executive Dashboard</h2>
+      <p style="margin: 6px 0 0 0;">Daily Portfolio Summary | ${today}</p>
+    </div>
+
+    <div style="border: 1px solid #d9e2ec; border-top: none; padding: 22px; border-radius: 0 0 8px 8px;">
+      <p>Hello,</p>
+
+      <p>
+        Please see today’s executive dashboard summary for <b>${companyName}</b>.
+        This report provides a quick view of portfolio health, project risk, and upcoming decision needs.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 18px; margin-bottom: 22px;">
+        <tr>
+          <td style="background-color: #d9ead3; padding: 16px; border: 1px solid #c7d7c0; text-align: center;">
+            <div style="font-size: 26px; font-weight: bold;">${projectsOnTrack}</div>
+            <div>Projects On Track</div>
+          </td>
+          <td style="background-color: #fff2cc; padding: 16px; border: 1px solid #e6d7a8; text-align: center;">
+            <div style="font-size: 26px; font-weight: bold;">${projectsAtRisk}</div>
+            <div>Projects At Risk</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: #f4cccc; padding: 16px; border: 1px solid #e0b4b4; text-align: center;">
+            <div style="font-size: 26px; font-weight: bold;">${criticalProjects}</div>
+            <div>Critical Projects</div>
+          </td>
+          <td style="background-color: #cfe2f3; padding: 16px; border: 1px solid #b7cde0; text-align: center;">
+            <div style="font-size: 26px; font-weight: bold;">${upcomingDecisions}</div>
+            <div>Upcoming Decisions</div>
+          </td>
+        </tr>
+      </table>
+
+      <p><b>Recommended Review Areas:</b></p>
+      <ul>
+        <li>Review any critical projects requiring escalation.</li>
+        <li>Confirm upcoming executive decisions.</li>
+        <li>Monitor projects at risk for timeline, funding, or dependency concerns.</li>
+        <li>Use the dashboard link below for the full project portfolio view.</li>
+      </ul>
+
+      <p style="margin-top: 24px;">
+        <a href="${dashboardUrl}" 
+           style="background-color: #24476b; color: white; padding: 12px 18px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+          Open Executive Dashboard
+        </a>
+      </p>
+
+      <p style="margin-top: 28px;">Best,<br>Dasha</p>
+    </div>
+  </div>
+  `;
+
+  GmailApp.sendEmail(recipient, subject, "", {
+    htmlBody: body
+  });
+}
+
+function createDailyIveyDashboardTrigger() {
+  ScriptApp.newTrigger("sendIveyExecutiveDashboardReport")
+    .timeBased()
+    .everyDays(1)
+    .atHour(7)
+    .create();
+}
